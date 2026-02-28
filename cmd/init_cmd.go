@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/f3r/csq/internal/bootstrap"
 	"github.com/f3r/csq/internal/config"
@@ -52,50 +53,67 @@ func runInit(cmd *cobra.Command, args []string) error {
 func installSessionStartHook(realHome, scriptPath string) error {
 	settingsPath := filepath.Join(realHome, ".claude", "settings.json")
 
-	var settings map[string]interface{}
 	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("reading settings: %w", err)
-		}
-		settings = make(map[string]interface{})
-	} else {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			return fmt.Errorf("parsing settings: %w", err)
-		}
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading settings: %w", err)
 	}
 
-	hooks, _ := settings["hooks"].([]interface{})
+	content := string(data)
 
-	hookCommand := scriptPath
-	for _, h := range hooks {
-		hMap, ok := h.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if hMap["type"] == "SessionStart" && hMap["command"] == hookCommand {
-			fmt.Fprintln(os.Stderr, "SessionStart hook already installed")
-			return nil
-		}
+	if strings.Contains(content, scriptPath) {
+		fmt.Fprintln(os.Stderr, "SessionStart hook already installed")
+		return nil
 	}
 
-	newHook := map[string]interface{}{
-		"type":    "SessionStart",
-		"command": hookCommand,
-	}
-	hooks = append(hooks, newHook)
-	settings["hooks"] = hooks
+	hookEntry := fmt.Sprintf(`    {
+      "type": "SessionStart",
+      "command": "%s"
+    }`, scriptPath)
 
-	out, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling settings: %w", err)
+	var result string
+
+	switch {
+	case len(data) == 0:
+		result = fmt.Sprintf("{\n  \"hooks\": [\n%s\n  ]\n}", hookEntry)
+
+	case strings.Contains(content, `"hooks"`):
+		lastBracket := strings.LastIndex(content, "]")
+		if lastBracket == -1 {
+			return fmt.Errorf("malformed settings: found hooks key but no closing bracket")
+		}
+		before := content[:lastBracket]
+		after := content[lastBracket:]
+		trimmed := strings.TrimRight(before, " \t\n\r")
+		if strings.HasSuffix(trimmed, "[") {
+			result = trimmed + "\n" + hookEntry + "\n  " + after
+		} else {
+			result = trimmed + ",\n" + hookEntry + "\n  " + after
+		}
+
+	default:
+		lastBrace := strings.LastIndex(content, "}")
+		if lastBrace == -1 {
+			return fmt.Errorf("malformed settings: no closing brace")
+		}
+		before := strings.TrimRight(content[:lastBrace], " \t\n\r")
+		after := content[lastBrace:]
+		separator := ","
+		if strings.TrimSpace(before) == "{" {
+			separator = ""
+		}
+		result = before + separator + "\n  \"hooks\": [\n" + hookEntry + "\n  ]\n" + after
+	}
+
+	var check interface{}
+	if err := json.Unmarshal([]byte(result), &check); err != nil {
+		return fmt.Errorf("hook insertion produced invalid JSON: %w", err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(result), 0644); err != nil {
 		return fmt.Errorf("writing settings: %w", err)
 	}
 

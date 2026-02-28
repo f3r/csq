@@ -93,6 +93,10 @@ func Launch(projectName, projectPath string, cfg config.Config, csArgs []string)
 		return fmt.Errorf("cs binary not found: %w", err)
 	}
 
+	if err := os.Chdir(projectPath); err != nil {
+		return fmt.Errorf("changing to project dir: %w", err)
+	}
+
 	env := buildEnv(homeDir, projectPath)
 	args := append([]string{csBinary}, csArgs...)
 
