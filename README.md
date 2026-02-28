@@ -1,40 +1,119 @@
-# csq — Multi-Project Claude Squad Launcher
+<p align="center">
+<pre>
+              ██████╗ ███████╗ ██████╗
+             ██╔════╝ ██╔════╝██╔═══██╗
+             ██║      ███████╗██║   ██║
+             ██║      ╚════██║██║▄▄ ██║
+             ╚██████╗ ███████║╚██████╔╝
+              ╚═════╝ ╚══════╝ ╚══▀▀═╝
+       Multi-Project Claude Squad Launcher
+</pre>
+</p>
 
-`csq` wraps [Claude Squad](https://github.com/smtg-ai/claude-squad) (`cs`) to add per-project state isolation, fuzzy project search, and automatic worktree bootstrapping.
+<p align="center">
+  <a href="#install">Install</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#commands">Commands</a> •
+  <a href="#configuration">Configuration</a>
+</p>
 
-**The problem:** Claude Squad stores all state in `~/.claude-squad/`. When you work across many projects with parallel sessions, state from different repos gets mixed together. Switching projects means losing track of which sessions belong where.
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.21+">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat" alt="macOS | Linux">
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat" alt="MIT License">
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat" alt="PRs Welcome">
+</p>
 
-**The solution:** `csq` gives each project its own isolated `HOME` directory, so Claude Squad thinks it's running independently per project. Your sessions, worktrees, and state stay cleanly separated.
+---
+
+`csq` wraps [Claude Squad](https://github.com/smtg-ai/claude-squad) (`cs`) to add **per-project state isolation**, **fuzzy project search**, and **automatic worktree bootstrapping**.
+
+### The Problem
+
+Claude Squad stores all state in `~/.claude-squad/`. When you work across many projects with parallel sessions, state from different repos gets mixed together. Switching projects means losing track of which sessions belong where.
+
+### The Solution
+
+`csq` gives each project its own isolated `HOME` directory, so Claude Squad thinks it's running independently per project. Your sessions, worktrees, and state stay cleanly separated.
+
+---
 
 ## Install
 
+### Prerequisites
+
+`csq` is written in Go. If you don't have Go installed:
+
+<details>
+<summary><strong>macOS</strong> (Homebrew)</summary>
+
 ```bash
-# Requires Go 1.21+
+brew install go
+```
+</details>
+
+<details>
+<summary><strong>Linux</strong> (apt/dnf)</summary>
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y golang
+
+# Fedora / RHEL
+sudo dnf install -y golang
+```
+</details>
+
+<details>
+<summary><strong>Any platform</strong> (official installer)</summary>
+
+Download from [go.dev/dl](https://go.dev/dl/) and follow the instructions for your OS.
+
+After installing, verify with:
+
+```bash
+go version   # should print go1.21 or later
+```
+</details>
+
+You'll also need [Claude Squad](https://github.com/smtg-ai/claude-squad) (`cs`) installed and available in your `PATH`.
+
+### Build from source
+
+```bash
 git clone https://github.com/f3r/csq.git
 cd csq
-make install   # builds and copies binary to ~/bin/csq
+make install   # builds the binary and copies it to ~/bin/csq
 ```
 
-Make sure `~/bin` is in your `PATH`.
+> **Note:** Make sure `~/bin` is in your `PATH`. Add this to your `~/.zshrc` or `~/.bashrc` if needed:
+> ```bash
+> export PATH="$HOME/bin:$PATH"
+> ```
+
+---
 
 ## Quick Start
 
 ```bash
-# One-time setup: creates ~/.csq/ and installs the bootstrap hook
+# 1. One-time setup — creates ~/.csq/ and installs the bootstrap hook
 csq init
 
-# Launch the fuzzy project picker
+# 2. Launch the fuzzy project picker
 csq
 
-# Jump straight to a project (fuzzy match)
+# 3. Jump straight to a project (fuzzy match)
 csq my-api
 
-# List all projects with session counts
+# 4. List all projects with session counts
 csq list
 
-# See all active sessions across every project
+# 5. See all active sessions across every project
 csq status
 ```
+
+---
 
 ## How It Works
 
@@ -53,11 +132,13 @@ Essential dotfiles (`.gitconfig`, `.ssh`, `.claude`, etc.) are symlinked back to
 A `SessionStart` hook (installed by `csq init`) runs whenever Claude Code starts a new session. If it detects a git worktree, it automatically:
 
 1. Copies `.env*` files from the main checkout
-2. Copies files listed in `.csq-copy` (see below)
+2. Copies files listed in `.csq-copy` (see [below](#csq-copy-file))
 3. Initializes git submodules
 4. Installs dependencies (detects npm/yarn/pnpm/go/bundler/pip)
 
 This runs once per worktree and is fully idempotent.
+
+---
 
 ## Commands
 
@@ -69,7 +150,7 @@ Opens an interactive fuzzy picker showing all discovered projects. Type to filte
   Search: web█
 
   > acme/web-app       [2 sessions]  ~/code/acme/web-app
-    acme/web-docs                       ~/code/acme/web-docs
+    acme/web-docs                     ~/code/acme/web-docs
 
   15 projects · 2 matching
 ```
@@ -101,10 +182,10 @@ Use `-r` to refresh the project cache.
 Aggregates all active Claude Squad sessions across every project.
 
 ```
-PROJECT          TITLE                     STATUS   BRANCH
-acme/api   fix auth middleware        running  cs/fix-auth
-acme/api   add rate limiting          paused   cs/rate-limit
-personal/blog    migrate to astro           running  cs/astro-migration
+PROJECT              TITLE                     STATUS   BRANCH
+acme/api             fix auth middleware        running  cs/fix-auth
+acme/api             add rate limiting          paused   cs/rate-limit
+personal/blog        migrate to astro           running  cs/astro-migration
 
 3 session(s) across 2 project(s)
 ```
@@ -132,6 +213,8 @@ Use `--` to pass arguments through to Claude Squad:
 csq my-api -- -y
 ```
 
+---
+
 ## Configuration
 
 Config lives at `~/.csq/config.json`:
@@ -157,6 +240,8 @@ Config lives at `~/.csq/config.json`:
 | `home_base` | Where isolated home dirs are created | `"~/.csq/homes"` |
 | `symlink_dotfiles` | Files/dirs symlinked from real home into each project home | see above |
 
+---
+
 ## `.csq-copy` File
 
 Place a `.csq-copy` file in your project root to list additional gitignored files that should be copied into worktrees. One path per line:
@@ -169,6 +254,8 @@ config/local.yml
 ```
 
 Lines starting with `#` are ignored. Paths are relative to the project root.
+
+---
 
 ## File Layout
 
@@ -187,3 +274,21 @@ Lines starting with `#` are ignored. Paths are relative to the project root.
         ├── .claude-squad/
         └── ...
 ```
+
+---
+
+## Development
+
+```bash
+make build        # compile binary
+make test         # run all tests
+make test-cover   # run tests with coverage report
+make install      # build + copy to ~/bin
+make clean        # remove build artifacts
+```
+
+---
+
+## License
+
+MIT
