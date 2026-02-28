@@ -29,7 +29,7 @@ func DefaultConfig() Config {
 		HomeBase: filepath.Join(home, CsqDir, "homes"),
 		SymlinkDotfiles: []string{
 			".gitconfig", ".ssh", ".claude", ".config",
-			".zshrc", ".zshenv", "bin", ".nvm", ".cargo",
+			".zshrc", ".zshenv", "bin", ".local", ".nvm", ".cargo", ".aws",
 		},
 	}
 }

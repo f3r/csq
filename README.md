@@ -227,7 +227,7 @@ Config lives at `~/.csq/config.json`:
   "home_base": "~/.csq/homes",
   "symlink_dotfiles": [
     ".gitconfig", ".ssh", ".claude", ".config",
-    ".zshrc", ".zshenv", "bin", ".nvm", ".cargo"
+    ".zshrc", ".zshenv", "bin", ".local", ".nvm", ".cargo", ".aws"
   ]
 }
 ```
