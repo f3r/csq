@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-
 	"github.com/f3r/csq/internal/bootstrap"
 	"github.com/f3r/csq/internal/config"
 	"github.com/spf13/cobra"
@@ -50,6 +48,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+type hookCommand struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
+
+type hookRule struct {
+	Matcher string        `json:"matcher"`
+	Hooks   []hookCommand `json:"hooks"`
+}
+
 func installSessionStartHook(realHome, scriptPath string) error {
 	settingsPath := filepath.Join(realHome, ".claude", "settings.json")
 
@@ -58,65 +66,66 @@ func installSessionStartHook(realHome, scriptPath string) error {
 		return fmt.Errorf("reading settings: %w", err)
 	}
 
-	content := string(data)
+	settings := make(map[string]json.RawMessage)
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("parsing settings: %w", err)
+		}
+	}
 
-	if strings.Contains(content, scriptPath) {
+	hooks := make(map[string][]hookRule)
+	needsMigration := false
+	if raw, ok := settings["hooks"]; ok {
+		if err := json.Unmarshal(raw, &hooks); err != nil {
+			// Old array format — discard and migrate
+			hooks = make(map[string][]hookRule)
+			needsMigration = true
+		}
+	}
+
+	if !needsMigration && hookContainsCommand(hooks["SessionStart"], scriptPath) {
 		fmt.Fprintln(os.Stderr, "SessionStart hook already installed")
 		return nil
 	}
 
-	hookEntry := fmt.Sprintf(`    {
-      "type": "SessionStart",
-      "command": "%s"
-    }`, scriptPath)
-
-	var result string
-
-	switch {
-	case len(data) == 0:
-		result = fmt.Sprintf("{\n  \"hooks\": [\n%s\n  ]\n}", hookEntry)
-
-	case strings.Contains(content, `"hooks"`):
-		lastBracket := strings.LastIndex(content, "]")
-		if lastBracket == -1 {
-			return fmt.Errorf("malformed settings: found hooks key but no closing bracket")
-		}
-		before := content[:lastBracket]
-		after := content[lastBracket:]
-		trimmed := strings.TrimRight(before, " \t\n\r")
-		if strings.HasSuffix(trimmed, "[") {
-			result = trimmed + "\n" + hookEntry + "\n  " + after
-		} else {
-			result = trimmed + ",\n" + hookEntry + "\n  " + after
-		}
-
-	default:
-		lastBrace := strings.LastIndex(content, "}")
-		if lastBrace == -1 {
-			return fmt.Errorf("malformed settings: no closing brace")
-		}
-		before := strings.TrimRight(content[:lastBrace], " \t\n\r")
-		after := content[lastBrace:]
-		separator := ","
-		if strings.TrimSpace(before) == "{" {
-			separator = ""
-		}
-		result = before + separator + "\n  \"hooks\": [\n" + hookEntry + "\n  ]\n" + after
+	newRule := hookRule{
+		Matcher: "",
+		Hooks: []hookCommand{
+			{Type: "command", Command: scriptPath},
+		},
 	}
+	hooks["SessionStart"] = append(hooks["SessionStart"], newRule)
 
-	var check interface{}
-	if err := json.Unmarshal([]byte(result), &check); err != nil {
-		return fmt.Errorf("hook insertion produced invalid JSON: %w", err)
+	hooksJSON, err := json.Marshal(hooks)
+	if err != nil {
+		return fmt.Errorf("marshaling hooks: %w", err)
+	}
+	settings["hooks"] = hooksJSON
+
+	result, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling settings: %w", err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(settingsPath, []byte(result), 0644); err != nil {
+	if err := os.WriteFile(settingsPath, result, 0644); err != nil {
 		return fmt.Errorf("writing settings: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Installed SessionStart hook in %s\n", settingsPath)
 	return nil
+}
+
+func hookContainsCommand(rules []hookRule, command string) bool {
+	for _, rule := range rules {
+		for _, h := range rule.Hooks {
+			if h.Command == command {
+				return true
+			}
+		}
+	}
+	return false
 }
