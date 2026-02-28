@@ -7,6 +7,7 @@ import (
 	"github.com/f3r/csq/internal/config"
 	"github.com/f3r/csq/internal/discovery"
 	"github.com/f3r/csq/internal/launcher"
+	"github.com/f3r/csq/internal/state"
 	"github.com/f3r/csq/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,8 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no projects found in %v (max_depth: %d)", cfg.Roots, cfg.MaxDepth)
 	}
 
+	projects = state.SortByRecency(projects, config.CsqDirPath())
+
 	var selected discovery.Project
 	csArgs := extractCSArgs(cmd)
 
@@ -81,6 +84,8 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		}
 		selected = *picked
 	}
+
+	_ = state.RecordLaunch(config.CsqDirPath(), selected.Name)
 
 	fmt.Fprintf(os.Stderr, "Launching cs for %s...\n", selected.Name)
 	return launcher.Launch(selected.Name, selected.Path, cfg, csArgs)
