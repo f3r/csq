@@ -122,6 +122,7 @@ func buildEnv(homeDir, projectPath string) []string {
 		"PWD="+projectPath,
 		"CSQ_REAL_HOME="+realHome,
 		"CSQ_PROJECT="+filepath.Base(projectPath),
+		"GH_CONFIG_DIR="+filepath.Join(realHome, ".config", "gh"),
 	)
 
 	return env
