@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# csq bootstrap script — runs as Claude Code SessionStart hook
+# Detects worktrees, copies .env files, installs deps, inits submodules
+set -euo pipefail
+
+MARKER=".csq-bootstrapped"
+
+# Exit if not in a git worktree
+if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+  exit 0
+fi
+
+# Check if this is a worktree (not the main checkout)
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+if [[ "$GIT_DIR" != *".git/worktrees/"* ]]; then
+  exit 0
+fi
+
+# Exit if already bootstrapped
+if [[ -f "$MARKER" ]]; then
+  exit 0
+fi
+
+echo "[csq] Bootstrapping worktree..."
+
+# Find main checkout path
+COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
+MAIN_CHECKOUT=$(dirname "$COMMON_DIR")
+
+# Copy .env files from main checkout
+for envfile in "$MAIN_CHECKOUT"/.env*; do
+  if [[ -f "$envfile" ]]; then
+    basename=$(basename "$envfile")
+    if [[ ! -f "$basename" ]]; then
+      cp "$envfile" "./$basename" || true
+      echo "[csq] Copied $basename"
+    fi
+  fi
+done
+
+# Process .csq-copy file (list of extra files to copy)
+if [[ -f "$MAIN_CHECKOUT/.csq-copy" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=$(echo "$line" | xargs) # trim whitespace
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ -f "$MAIN_CHECKOUT/$line" && ! -f "$line" ]]; then
+      mkdir -p "$(dirname "$line")" || true
+      cp "$MAIN_CHECKOUT/$line" "$line" || true
+      echo "[csq] Copied $line"
+    fi
+  done < "$MAIN_CHECKOUT/.csq-copy"
+fi
+
+# Init submodules if needed
+if [[ -f ".gitmodules" ]]; then
+  git submodule update --init --recursive || true
+  echo "[csq] Initialized submodules"
+fi
+
+# Detect package manager and install deps
+if [[ -f "pnpm-lock.yaml" ]]; then
+  pnpm install --frozen-lockfile || true
+  echo "[csq] Installed deps (pnpm)"
+elif [[ -f "yarn.lock" ]]; then
+  yarn install --frozen-lockfile || true
+  echo "[csq] Installed deps (yarn)"
+elif [[ -f "package-lock.json" ]]; then
+  npm ci || true
+  echo "[csq] Installed deps (npm)"
+elif [[ -f "go.mod" ]]; then
+  go mod download || true
+  echo "[csq] Downloaded Go modules"
+elif [[ -f "Gemfile.lock" ]]; then
+  bundle install || true
+  echo "[csq] Installed gems"
+elif [[ -f "requirements.txt" ]]; then
+  pip install -r requirements.txt || true
+  echo "[csq] Installed Python deps"
+fi
+
+# Mark as bootstrapped
+touch "$MARKER"
+echo "[csq] Bootstrap complete"
